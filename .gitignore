@@ -21,6 +21,10 @@ frontend/build/
 # Claude Code 로컬 설정
 .claude/
 
+# Cloudflare Wrangler
+.wrangler/
+.dev.vars
+
 # OS
 .DS_Store
 Thumbs.db

@@ -14,7 +14,8 @@ export default defineConfig({
     ],
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        // 로컬 개발 시 worker를 `cd worker && npm run dev`로 띄우면 8787에서 동작.
+        target: 'http://localhost:8787',
         changeOrigin: true
       }
     }
