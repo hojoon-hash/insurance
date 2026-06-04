@@ -7,4 +7,4 @@ compatibility_date = "2024-11-01"
 #   npx wrangler secret put ALLOWED_ORIGINS
 # 로컬 개발용 기본값이 필요하면 아래 [vars]에 넣을 수 있음(공개 저장소엔 비밀값 금지).
 [vars]
-ALLOWED_ORIGINS = ""
+ALLOWED_ORIGINS = "https://smilesam.net,https://www.smilesam.net,https://chiwiseonsaeng.pages.dev"
