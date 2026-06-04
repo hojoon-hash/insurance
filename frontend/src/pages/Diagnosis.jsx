@@ -6,6 +6,7 @@ import ChatMessage from '../components/ChatMessage';
 import ProgressBar from '../components/ProgressBar';
 import PreviewResult from '../components/PreviewResult';
 import LeadFormModal from '../components/LeadFormModal';
+import { apiUrl } from '../lib/api';
 
 const questions = [
   {
@@ -170,7 +171,7 @@ export default function Diagnosis() {
     ]);
 
     try {
-      const response = await fetch('/api/diagnosis', {
+      const response = await fetch(apiUrl('/api/diagnosis'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(finalAnswers),

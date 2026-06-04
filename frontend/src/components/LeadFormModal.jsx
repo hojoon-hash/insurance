@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, User, Phone, Calendar, CheckCircle, Shield, ChevronRight } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
 export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmitSuccess }) {
   const [formData, setFormData] = useState({
@@ -86,7 +87,7 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
         timestamp: new Date().toISOString()
       };
 
-      const response = await fetch('/api/lead', {
+      const response = await fetch(apiUrl('/api/lead'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(leadData)

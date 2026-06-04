@@ -18,6 +18,9 @@ frontend/build/
 *.swp
 *.swo
 
+# Claude Code 로컬 설정
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db

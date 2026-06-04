@@ -2,10 +2,19 @@ import express from 'express';
 import cors from 'cors';
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+// ALLOWED_ORIGINS 환경변수(쉼표 구분)로 허용 도메인을 제한. 미설정 시 전체 허용.
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : null;
+
+app.use(
+  cors({
+    origin: allowedOrigins || true,
+  })
+);
 app.use(express.json());
 
 // In-memory storage for leads
@@ -408,8 +417,27 @@ app.post('/api/diagnosis', (req, res) => {
   }
 });
 
+// 구글 시트(Apps Script 웹앱)로 리드 전달. 실패해도 사용자 응답은 막지 않음.
+const GOOGLE_SHEETS_WEBHOOK_URL = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+
+const forwardLeadToSheets = async (leadData) => {
+  if (!GOOGLE_SHEETS_WEBHOOK_URL) return;
+  try {
+    const response = await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(leadData)
+    });
+    if (!response.ok) {
+      console.error(`⚠️ Google Sheets 전송 실패: HTTP ${response.status}`);
+    }
+  } catch (error) {
+    console.error('⚠️ Google Sheets 전송 오류:', error.message);
+  }
+};
+
 // POST /api/lead - Save lead information
-app.post('/api/lead', (req, res) => {
+app.post('/api/lead', async (req, res) => {
   try {
     const leadData = {
       ...req.body,
@@ -426,6 +454,8 @@ app.post('/api/lead', (req, res) => {
       quality: leadData.leadQuality
     });
     console.log(`📈 Total Leads: ${leads.length}`);
+
+    await forwardLeadToSheets(leadData);
 
     res.json({
       success: true,
@@ -455,8 +485,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
-  console.log(`🦷 치위선생 Backend Server is running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🦷 치위선생 Backend Server is running on port ${PORT}`);
   console.log(`📊 Diagnosis API: http://localhost:${PORT}/api/diagnosis`);
   console.log(`🎯 Lead Capture API: http://localhost:${PORT}/api/lead`);
 });

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import ScoreChart from '../components/ScoreChart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell } from 'recharts';
+import { apiUrl } from '../lib/api';
 
 export default function Result() {
   const location = useLocation();
@@ -98,7 +99,7 @@ export default function Result() {
     }
 
     try {
-      const response = await fetch('/api/lead', {
+      const response = await fetch(apiUrl('/api/lead'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
