@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, User, Phone, Calendar, CheckCircle, Shield, ChevronRight } from 'lucide-react';
 import { apiUrl } from '../lib/api';
+import Turnstile from './Turnstile';
 
 export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmitSuccess }) {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
     birthDate: '',
+    target: '본인',
     privacyAgree: false,
     marketingAgree: false
   });
@@ -15,6 +17,8 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [honeypot, setHoneypot] = useState('');
 
   // 전화번호 자동 포맷팅
   const formatPhoneNumber = (value) => {
@@ -49,14 +53,22 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
       newErrors.phone = '올바른 휴대폰 번호를 입력해주세요';
     }
 
-    // 생년월일 검증
+    // 생년월일 검증 (상담 대상에 따라 허용 연령 분기)
     if (!formData.birthDate) {
       newErrors.birthDate = '생년월일을 입력해주세요';
     } else {
       const birth = new Date(formData.birthDate);
       const today = new Date();
       const age = today.getFullYear() - birth.getFullYear();
-      if (age < 20 || age > 80) {
+      if (formData.target === '자녀') {
+        if (age < 0 || age > 19) {
+          newErrors.birthDate = '자녀(미성년) 생년월일을 확인해주세요';
+        }
+      } else if (formData.target === '가족') {
+        if (age < 0 || age > 90) {
+          newErrors.birthDate = '생년월일을 확인해주세요';
+        }
+      } else if (age < 20 || age > 80) {
         newErrors.birthDate = '만 20세 ~ 80세만 가입 가능합니다';
       }
     }
@@ -78,8 +90,17 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
     setIsSubmitting(true);
 
     try {
+      const leadId =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
       const leadData = {
+        leadId,
+        stage: 'diagnosis',
         ...formData,
+        company: honeypot,
+        turnstileToken,
         score: diagnosisData.score,
         grade: diagnosisData.grade.text,
         savings: diagnosisData.savings,
@@ -96,7 +117,7 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
       const result = await response.json();
 
       if (result.success) {
-        onSubmitSuccess(formData);
+        onSubmitSuccess({ ...formData, leadId });
       } else {
         alert('신청 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
@@ -149,8 +170,34 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
             {/* Form */}
             <form onSubmit={handleSubmit} className="p-6">
               <p className="text-gray-600 mb-6 text-center">
-                💌 결과를 어디로 보내드릴까요?
+                💌 상세 결과 확인을 위해 정보를 입력해주세요
               </p>
+
+              {/* 상담 대상 */}
+              <div className="mb-4">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  누구를 위한 상담인가요? <span className="text-alert">*</span>
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {['본인', '자녀', '가족'].map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, target: opt });
+                        if (errors.birthDate) setErrors({ ...errors, birthDate: null });
+                      }}
+                      className={`py-3 rounded-xl border-2 font-medium transition-colors ${
+                        formData.target === opt
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {opt === '자녀' ? '자녀(미성년)' : opt === '가족' ? '가족 함께' : '본인'}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* 이름 */}
               <div className="mb-4">
@@ -195,7 +242,7 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
                   <p className="text-alert text-xs mt-1">{errors.phone}</p>
                 )}
                 <p className="text-xs text-gray-500 mt-1">
-                  💬 분석 결과를 문자로 받아요
+                  💬 전문 상담사가 이 번호로 연락드려요
                 </p>
               </div>
 
@@ -221,7 +268,11 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
                   <p className="text-alert text-xs mt-1">{errors.birthDate}</p>
                 )}
                 <p className="text-xs text-gray-500 mt-1">
-                  💡 정확한 보험 설계를 위해 필요해요
+                  {formData.target === '자녀'
+                    ? '💡 자녀(피보험자)의 생년월일을 입력해주세요'
+                    : formData.target === '가족'
+                    ? '💡 가입 대상자의 생년월일을 입력해주세요'
+                    : '💡 정확한 보험 설계를 위해 필요해요'}
                 </p>
               </div>
 
@@ -284,6 +335,21 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
                 </label>
               </div>
 
+              {/* 허니팟(봇 차단용 숨김 필드) — 사람에겐 보이지 않음 */}
+              <input
+                type="text"
+                name="company"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+              />
+
+              {/* Turnstile(봇 검증) — VITE_TURNSTILE_SITE_KEY 설정 시에만 표시 */}
+              <Turnstile onToken={setTurnstileToken} />
+
               {/* Submit 버튼 */}
               <button
                 type="submit"
@@ -303,7 +369,7 @@ export default function LeadFormModal({ isOpen, onClose, diagnosisData, onSubmit
               {/* 보안 안내 */}
               <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-500">
                 <Shield className="w-4 h-4" />
-                <span>정보는 안전하게 암호화되어 상담 목적으로만 사용됩니다</span>
+                <span>입력하신 정보는 상담 목적으로만 안전하게 사용됩니다</span>
               </div>
             </form>
           </motion.div>

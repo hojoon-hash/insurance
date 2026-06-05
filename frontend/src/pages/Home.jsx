@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, TrendingDown, Users, CheckCircle } from 'lucide-react';
 import FloatingEnvelope from '../components/FloatingEnvelope';
+import BrandImage from '../components/BrandImage';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -20,9 +21,16 @@ export default function Home() {
       {/* Header */}
       <header className="px-6 py-4 flex items-center justify-between relative z-10">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
-            <span className="text-xl">🦷</span>
-          </div>
+          <BrandImage
+            src="/logo.png"
+            alt="치위선생"
+            className="w-9 h-9 rounded-full bg-white object-contain shadow-md"
+            fallback={
+              <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
+                <span className="text-xl">🦷</span>
+              </div>
+            }
+          />
           <h1 className="text-white font-bold text-xl">치위선생</h1>
         </div>
         <motion.div
@@ -54,7 +62,17 @@ export default function Home() {
           transition={{ duration: 1, delay: 0.3 }}
           className="flex justify-center mb-12"
         >
-          <FloatingEnvelope />
+          <motion.div
+            animate={{ y: [0, -16, 0] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <BrandImage
+              src="/hero.png"
+              alt="치위선생 구강건강 셀프체크"
+              className="w-60 max-w-[72vw] rounded-3xl shadow-2xl"
+              fallback={<FloatingEnvelope />}
+            />
+          </motion.div>
         </motion.div>
 
         {/* Main Headline */}

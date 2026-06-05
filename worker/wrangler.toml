@@ -4,7 +4,16 @@ compatibility_date = "2024-11-01"
 
 # 환경변수는 보안상 대시보드 또는 CLI로 설정 권장:
 #   npx wrangler secret put GOOGLE_SHEETS_WEBHOOK_URL
-#   npx wrangler secret put ALLOWED_ORIGINS
+#   npx wrangler secret put TURNSTILE_SECRET   # 봇 차단(미설정 시 검증 생략)
 # 로컬 개발용 기본값이 필요하면 아래 [vars]에 넣을 수 있음(공개 저장소엔 비밀값 금지).
 [vars]
 ALLOWED_ORIGINS = "https://smilesam.net,https://www.smilesam.net,https://chiwiseonsaeng.pages.dev"
+
+# 리드 1차 영구 저장소(유실 방지). 시트는 사람이 보기 편한 미러 역할.
+[[kv_namespaces]]
+binding = "LEADS"
+id = "440fe02212fe43f2b3ff3735b73a2bc0"
+
+# 시트 전송 실패로 보존된 pending 리드를 30분마다 재전송.
+[triggers]
+crons = ["*/30 * * * *"]

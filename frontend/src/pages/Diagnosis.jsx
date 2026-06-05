@@ -11,7 +11,7 @@ import { apiUrl } from '../lib/api';
 const questions = [
   {
     id: 'welcome',
-    text: '안녕하세요! 치위선생입니다. 🦷\n\n단 3분이면 내 치아보험이 얼마나 부족한지 알 수 있어요.\n\n지금 바로 시작할까요?',
+    text: '안녕하세요! 치위선생입니다. 🦷\n\n단 3분이면 내 치아보험이 얼마나 부족한지 알 수 있어요.\n\n지금 바로 시작해볼게요! 👇',
     type: 'info',
   },
   {
@@ -205,12 +205,18 @@ export default function Diagnosis() {
   const handleLeadFormSubmit = (formData) => {
     setUserName(formData.name);
     setShowLeadForm(false);
-    navigate('/result', { 
-      state: { 
-        diagnosisResult, 
+    navigate('/result', {
+      state: {
+        diagnosisResult,
         answers,
-        userName: formData.name 
-      } 
+        userName: formData.name,
+        leadInfo: {
+          leadId: formData.leadId,
+          name: formData.name,
+          phone: formData.phone,
+          birthDate: formData.birthDate,
+        },
+      },
     });
   };
 

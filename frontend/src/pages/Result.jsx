@@ -18,22 +18,29 @@ import {
 import ScoreChart from '../components/ScoreChart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell } from 'recharts';
 import { apiUrl } from '../lib/api';
+import Turnstile from '../components/Turnstile';
 
 export default function Result() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { diagnosisResult, answers, userName, leadInfo } = location.state || {};
+
   const [expandedRisk, setExpandedRisk] = useState(null);
   const [showContactModal, setShowContactModal] = useState(false);
   const [consultType, setConsultType] = useState('phone'); // 'phone' or 'visit'
   const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
+    name: leadInfo?.name || '',
+    phone: leadInfo?.phone || '',
     date: '',
     time: '',
     location: ''
   });
-
-  const { diagnosisResult, answers, userName } = location.state || {};
+  // 진단 단계에서 이름·전화를 이미 받았으면 재입력 대신 확인만 한다.
+  const [editContact, setEditContact] = useState(!(leadInfo?.name && leadInfo?.phone));
+  const [consultErrors, setConsultErrors] = useState({});
+  const [isConsultSubmitting, setIsConsultSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [honeypot, setHoneypot] = useState('');
 
   if (!diagnosisResult) {
     navigate('/');
@@ -89,15 +96,32 @@ export default function Result() {
     }
   ];
 
+  const validateConsult = () => {
+    const errs = {};
+    if (!formData.name.trim()) {
+      errs.name = '이름을 입력해주세요';
+    } else if (!/^[가-힣]{2,10}$/.test(formData.name.trim())) {
+      errs.name = '한글 이름을 입력해주세요';
+    }
+    if (!formData.phone) {
+      errs.phone = '연락처를 입력해주세요';
+    } else if (!/^01[0-9]-\d{4}-\d{4}$/.test(formData.phone)) {
+      errs.phone = '올바른 휴대폰 번호를 입력해주세요';
+    }
+    if (!formData.date) errs.date = '희망 날짜를 선택해주세요';
+    if (!formData.time) errs.time = '희망 시간대를 선택해주세요';
+    if (consultType === 'visit' && !formData.location) errs.location = '방문 장소를 선택해주세요';
+    setConsultErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleConsultSubmit = async (e) => {
     e.preventDefault();
-    
-    // 폼 검증
-    if (!formData.name || !formData.phone || !formData.date || !formData.time) {
-      alert('모든 필수 항목을 입력해주세요.');
-      return;
-    }
 
+    if (!validateConsult()) return;
+    if (isConsultSubmitting) return;
+
+    setIsConsultSubmitting(true);
     try {
       const response = await fetch(apiUrl('/api/lead'), {
         method: 'POST',
@@ -105,12 +129,17 @@ export default function Result() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          leadId: leadInfo?.leadId,
+          stage: 'consult',
           name: formData.name,
           phone: formData.phone,
+          birthDate: leadInfo?.birthDate,
           consultType,
           date: formData.date,
           time: formData.time,
-          location: formData.location || '미정',
+          location: consultType === 'visit' ? formData.location : '유선상담',
+          company: honeypot,
+          turnstileToken,
           score,
           grade: grade.text,
           riskFactors: riskFactors.length,
@@ -118,14 +147,33 @@ export default function Result() {
         })
       });
 
-      if (response.ok) {
+      const result = await response.json().catch(() => ({}));
+
+      if (response.ok && result.success !== false) {
         alert('✅ 상담 신청이 완료되었습니다!\n영업일 기준 1일 이내 연락드리겠습니다.');
         setShowContactModal(false);
+      } else {
+        alert('❌ 상담 신청에 실패했습니다. 다시 시도해주세요.');
       }
     } catch (error) {
       console.error('상담 신청 실패:', error);
       alert('❌ 상담 신청에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsConsultSubmitting(false);
     }
+  };
+
+  // 휴대폰 번호 자동 포맷팅
+  const handleConsultPhoneChange = (e) => {
+    const numbers = e.target.value.replace(/[^\d]/g, '');
+    let formatted = numbers;
+    if (numbers.length > 3 && numbers.length <= 7) {
+      formatted = `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
+    } else if (numbers.length > 7) {
+      formatted = `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
+    }
+    setFormData({ ...formData, phone: formatted });
+    if (consultErrors.phone) setConsultErrors({ ...consultErrors, phone: null });
   };
 
   return (
@@ -519,7 +567,7 @@ export default function Result() {
               </button>
             </div>
 
-            <form onSubmit={handleConsultSubmit} className="space-y-4">
+            <form onSubmit={handleConsultSubmit} className="space-y-4" noValidate>
               {/* 상담 유형 선택 */}
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
@@ -562,35 +610,68 @@ export default function Result() {
                 )}
               </div>
 
-              {/* 이름 */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  이름 *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="홍길동"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary focus:outline-none"
-                  required
-                />
-              </div>
+              {/* 연락처 정보: 진단 때 받았으면 확인만, 없으면 입력 */}
+              {!editContact ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-blue-600 mb-1">이 정보로 예약합니다</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {formData.name} · {formData.phone}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditContact(true)}
+                    className="text-sm text-primary font-medium hover:underline shrink-0"
+                  >
+                    수정
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* 이름 */}
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      이름 *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => {
+                        setFormData({ ...formData, name: e.target.value });
+                        if (consultErrors.name) setConsultErrors({ ...consultErrors, name: null });
+                      }}
+                      placeholder="홍길동"
+                      className={`w-full px-4 py-3 border-2 rounded-xl focus:border-primary focus:outline-none ${
+                        consultErrors.name ? 'border-red-400' : 'border-gray-300'
+                      }`}
+                    />
+                    {consultErrors.name && (
+                      <p className="text-red-500 text-xs mt-1">{consultErrors.name}</p>
+                    )}
+                  </div>
 
-              {/* 연락처 */}
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  연락처 *
-                </label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="010-1234-5678"
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary focus:outline-none"
-                  required
-                />
-              </div>
+                  {/* 연락처 */}
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      연락처 *
+                    </label>
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={handleConsultPhoneChange}
+                      placeholder="010-1234-5678"
+                      maxLength="13"
+                      className={`w-full px-4 py-3 border-2 rounded-xl focus:border-primary focus:outline-none ${
+                        consultErrors.phone ? 'border-red-400' : 'border-gray-300'
+                      }`}
+                    />
+                    {consultErrors.phone && (
+                      <p className="text-red-500 text-xs mt-1">{consultErrors.phone}</p>
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* 희망 날짜 */}
               <div>
@@ -601,11 +682,18 @@ export default function Result() {
                 <input
                   type="date"
                   value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, date: e.target.value });
+                    if (consultErrors.date) setConsultErrors({ ...consultErrors, date: null });
+                  }}
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary focus:outline-none"
-                  required
+                  className={`w-full px-4 py-3 border-2 rounded-xl focus:border-primary focus:outline-none ${
+                    consultErrors.date ? 'border-red-400' : 'border-gray-300'
+                  }`}
                 />
+                {consultErrors.date && (
+                  <p className="text-red-500 text-xs mt-1">{consultErrors.date}</p>
+                )}
               </div>
 
               {/* 희망 시간대 */}
@@ -616,15 +704,22 @@ export default function Result() {
                 </label>
                 <select
                   value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary focus:outline-none"
-                  required
+                  onChange={(e) => {
+                    setFormData({ ...formData, time: e.target.value });
+                    if (consultErrors.time) setConsultErrors({ ...consultErrors, time: null });
+                  }}
+                  className={`w-full px-4 py-3 border-2 rounded-xl focus:border-primary focus:outline-none ${
+                    consultErrors.time ? 'border-red-400' : 'border-gray-300'
+                  }`}
                 >
                   <option value="">선택해주세요</option>
                   <option value="09:00-12:00">오전 (09:00~12:00)</option>
                   <option value="12:00-15:00">점심 (12:00~15:00)</option>
                   <option value="15:00-18:00">오후 (15:00~18:00)</option>
                 </select>
+                {consultErrors.time && (
+                  <p className="text-red-500 text-xs mt-1">{consultErrors.time}</p>
+                )}
               </div>
 
               {/* 방문 상담 시 장소 선택 */}
@@ -636,28 +731,54 @@ export default function Result() {
                   </label>
                   <select
                     value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-primary focus:outline-none"
-                    required={consultType === 'visit'}
+                    onChange={(e) => {
+                      setFormData({ ...formData, location: e.target.value });
+                      if (consultErrors.location) setConsultErrors({ ...consultErrors, location: null });
+                    }}
+                    className={`w-full px-4 py-3 border-2 rounded-xl focus:border-primary focus:outline-none ${
+                      consultErrors.location ? 'border-red-400' : 'border-gray-300'
+                    }`}
                   >
                     <option value="">선택해주세요</option>
                     <option value="강남점">강남점 (강남역 5번 출구)</option>
                     <option value="종로점">종로점 (종각역 3번 출구)</option>
                     <option value="판교점">판교점 (판교역 1번 출구)</option>
                   </select>
+                  {consultErrors.location && (
+                    <p className="text-red-500 text-xs mt-1">{consultErrors.location}</p>
+                  )}
                 </div>
               )}
+
+              {/* 허니팟(봇 차단용 숨김 필드) */}
+              <input
+                type="text"
+                name="company"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+              />
+
+              {/* Turnstile(봇 검증) — VITE_TURNSTILE_SITE_KEY 설정 시에만 표시 */}
+              <Turnstile onToken={setTurnstileToken} />
 
               {/* 제출 버튼 */}
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-primary to-blue-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all mt-6"
+                disabled={isConsultSubmitting}
+                className="w-full bg-gradient-to-r from-primary to-blue-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all mt-6 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                상담 신청 완료하기
+                {isConsultSubmitting ? '처리 중...' : '상담 신청 완료하기'}
               </button>
 
               <p className="text-xs text-gray-500 text-center mt-3">
                 * 영업일 기준 1일 이내 연락드립니다
+              </p>
+              <p className="text-[11px] text-gray-400 text-center mt-2 leading-relaxed">
+                예약 시 진단 정보와 연락처가 상담 목적으로 전문 상담사에게 전달됩니다.
               </p>
             </form>
           </motion.div>
